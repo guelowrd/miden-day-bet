@@ -389,3 +389,55 @@ pub async fn create_basic_wallet_account(
 
     Ok(account)
 }
+
+/// Creates a hybrid account with BasicWallet + a custom component, using auth keys
+///
+/// # Arguments
+/// * `client` - The Miden client instance
+/// * `keystore` - The keystore for storing authentication keys
+/// * `package` - The compiled package containing the account component
+/// * `config` - Configuration for account creation
+///
+/// # Returns
+/// The created `Account` with basic wallet + custom component functionality
+///
+/// # Errors
+/// Returns an error if account creation, key generation, or keystore operations fail
+pub async fn create_hybrid_wallet_account_from_package(
+    client: &mut Client<FilesystemKeyStore<StdRng>>,
+    keystore: Arc<FilesystemKeyStore<StdRng>>,
+    package: Arc<Package>,
+    config: AccountCreationConfig,
+) -> Result<Account> {
+    let account_component = account_component_from_package(package, &config)
+        .context("Failed to create account component from package")?;
+
+    let mut init_seed = [0_u8; 32];
+    client.rng().fill_bytes(&mut init_seed);
+
+    let key_pair = SecretKey::with_rng(client.rng());
+
+    let builder = AccountBuilder::new(init_seed)
+        .account_type(config.account_type)
+        .storage_mode(config.storage_mode)
+        .with_auth_component(AuthRpoFalcon512::new(PublicKeyCommitment::from(
+            key_pair.public_key().to_commitment(),
+        )))
+        .with_component(BasicWallet)
+        .with_component(account_component);
+
+    let account = builder
+        .build()
+        .context("Failed to build hybrid account")?;
+
+    client
+        .add_account(&account, false)
+        .await
+        .context("Failed to add account to client")?;
+
+    keystore
+        .add_key(&AuthSecretKey::RpoFalcon512(key_pair))
+        .context("Failed to add key to keystore")?;
+
+    Ok(account)
+}

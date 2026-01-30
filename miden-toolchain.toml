@@ -1,0 +1,12 @@
+[toolchain]
+channel = "0.19.1"
+components = [
+    "std",
+    "base",
+    "vm",
+    "client",
+    "midenc",
+    "cargo-miden",
+    "node",
+    "debug",
+]
